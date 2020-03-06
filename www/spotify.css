@@ -1,0 +1,116 @@
+
+@font-face {
+  font-family: "ProximaNova-Medium";
+  src: url("fonts/ProximaNova-Medium.ttf");
+}
+
+@font-face {
+  font-family: "ProximaNova-Bold";
+  src: url("fonts/ProximaNova-Bold.ttf");
+}
+
+html {
+  font-family: "ProximaNova-Medium", "Arial", sans-serif;
+  color: white;
+}
+
+body {
+  font-family: "ProximaNova-Medium", "Arial", sans-serif;
+  background-color: #040404;
+  color: #909090;
+  margin: 0;
+}
+
+a {
+  color: white !important;
+  text-decoration: none;
+}
+
+a:hover {
+  color: white;
+  text-decoration: underline;
+}
+
+h1, h2, h3, h4 {
+  font-family: "ProximaNova-Bold";
+  color: white;
+}
+
+hr {
+  border-color: #282828;
+}
+
+table {
+  border-collapse: collapse;
+}
+
+table, td {
+  background-color: #040404 !important;
+  color: #909090 !important;
+  border-bottom: 1px solid transparent;
+}
+
+th {
+  border-bottom: 1px solid #282828 !important;
+}
+
+div .inline {
+  float: left;
+  margin-right: 5px;
+  height: 20px;
+}
+
+audio {
+  background-color: #040404;
+}
+
+.selectize-input {
+  background-color: #282828 !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: white;
+  font-size: 12px;
+  padding: 2px 5px;
+  min-height: 0px;
+  height: 22px;
+}
+
+.selectize-input div.item + input {
+  display: inline-block;
+}
+
+.selectize-dropdown {
+  background-color: #282828;
+  color: white;
+}
+
+.selectize-dropdown-content {
+  max-height: 400px;
+}
+
+.selectize-dropdown-content .active {
+  background-color: #535353;
+  color: white;
+}
+
+.selectize-control.single .selectize-input:after {
+  border: none;
+  content: '\e252';
+  font-family: "Glyphicons Halflings";
+  color: white;
+  display: block;
+  position: absolute;
+  top: 5px;
+  right: 20px;
+}
+
+.selectize-control.single .selectize-input.dropdown-active:after {
+  border: none;
+  content: '\e253';
+  font-family: "Glyphicons Halflings";
+  color: white;
+  display: block;
+  position: absolute;
+  top: 10px;
+  right: 20px;
+}
