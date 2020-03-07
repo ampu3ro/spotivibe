@@ -8,12 +8,12 @@ shinyServer(function(input, output, session) {
   })
   
   output$ui <- renderUI({
-    if (is.null(react$code)) {
+    if (is.null(react$code) && input$dataset == "yours") {
       fluidPage(
         br(),
         actionButton("connect", "Connect to Spotify", icon=icon("sign-in-alt"))
       )
-    } else {
+    } else if (!is.null(react$tracks)) {
       fluidPage(tags$head(includeCSS(theme)),
                 hr(),
                 uiOutput("summary"),
@@ -77,44 +77,42 @@ shinyServer(function(input, output, session) {
   })
   
   observe({
-    if (is.null(react$code))
+    if (is.null(react$code) && input$dataset == "yours")
       return()
     
-    credentials <- oauth2.0_access_token(endpoint, app, react$code)
-    token <- oauth2.0_token(endpoint, app, scope, credentials=credentials, cache=F, use_oob=F)
-    
-    get_json <- function(url) {
-      response <- GET(url, token)
+    if (input$dataset == "yours") {
       
-      if (status_code(response) == 429) {
-        retry_after <- headers(response)$`Retry-After`
-        setProgress(detail=glue("API query limits reached, retrying after {retry_after} seconds"))
-        
-        Sys.sleep(retry_after)
+      credentials <- oauth2.0_access_token(endpoint, app, react$code)
+      token <- oauth2.0_token(endpoint, app, scope, credentials=credentials, cache=F, use_oob=F)
+      
+      get_json <- function(url) {
         response <- GET(url, token)
+        
+        if (status_code(response) == 429) {
+          retry_after <- headers(response)$`Retry-After`
+          setProgress(detail=glue("API query limits reached, retrying after {retry_after} seconds"))
+          
+          Sys.sleep(retry_after)
+          response <- GET(url, token)
+        }
+        
+        stop_for_status(response)
+        fromJSON(httr::content(response, "text", encoding="UTF-8"), flatten=T)
       }
       
-      stop_for_status(response)
-      fromJSON(httr::content(response, "text", encoding="UTF-8"), flatten=T)
-    }
-    
-    split_comma <- function(x, n) {
-      x <- split(x, ceiling(seq_along(x) / n))
-      map_chr(x, glue_collapse, ",")
-    }
-    
-    median_estimate <- function(y, x=feature_bins[[1]]) {
-      n <- sum(y)
-      m <- max(which(cumsum(y / n) <= .5)) # left median group
-      x[m] + (n / 2 - cumsum(y)[m-1]) / y[m] * diff(x)[1]
-    }
-    #https://math.stackexchange.com/questions/2591946/how-to-find-median-from-a-histogram
-    
-    withProgress({
-      if (debug) {
-        load("spotify.RData")
-        
-      } else {
+      split_comma <- function(x, n) {
+        x <- split(x, ceiling(seq_along(x) / n))
+        map_chr(x, glue_collapse, ",")
+      }
+      
+      median_estimate <- function(y, x=feature_bins[[1]]) {
+        n <- sum(y)
+        m <- max(which(cumsum(y / n) <= .5)) # left median group
+        x[m] + (n / 2 - cumsum(y)[m-1]) / y[m] * diff(x)[1]
+      }
+      #https://math.stackexchange.com/questions/2591946/how-to-find-median-from-a-histogram
+      
+      withProgress({
         setProgress(0.1, "retrieving track metadata")
         
         tracks_saved <- NULL
@@ -161,144 +159,158 @@ shinyServer(function(input, output, session) {
         id <- unique(bind_rows(tracks_saved$artists)$id)
         url <- paste0(api, "/artists/?ids=", split_comma(id, 50))
         artists <- as_tibble(map_dfr(url, function(url) get_json(url)$artists))
-      }
+        
+        setProgress(0.7, "formatting")
+        
+        bars_all <- features_all %>%
+          mutate(bin=seq(nrow(.))) %>%
+          pivot_longer(one_of(feature_cols), names_to="feature") %>%
+          mutate(feature=factor(feature, feature_cols)) %>%
+          group_by(feature) %>%
+          mutate(scaled=value / max(value))
+        
+        stat_all <- features_all %>%
+          summarize(valence=median_estimate(valence),
+                    danceability=median_estimate(danceability),
+                    energy=median_estimate(energy),
+                    tempo=median_estimate(tempo, feature_bins$tempo)) %>%
+          pivot_longer(everything(), names_to="feature", values_to="median")
+        
+        tracks_top_wide <- tracks_top %>%
+          mutate(artist_name1=map_chr(artists, function(x) x$name[1]),
+                 count=1) %>%
+          pivot_wider(one_of("name","artist_name1"), names_from=term, values_from=count)
+        
+        tracks <- tracks_saved  %>%
+          bind_rows(tracks_top) %>%
+          transmute(id,
+                    name,
+                    added_at=as_datetime(added_at),
+                    added_date=as_date(added_at),
+                    added_month=floor_date(added_date, "month"),
+                    artists,
+                    artist_name1=map_chr(artists, function(x) x$name[1]),
+                    artist_names=map_chr(artists, function(x) glue_collapse(x$name, ", ")),
+                    album_name=album.name,
+                    label=paste(artist_names, "-", name),
+                    preview_url,
+                    play=ifelse(is.na(preview_url), "", as.character(icon("play", lib="glyphicon")))) %>%
+          arrange(added_date) %>%
+          distinct(name, artist_name1, .keep_all=T) %>%
+          inner_join(select(features, one_of("id", feature_cols)), "id") %>%
+          left_join(tracks_top_wide, c("name", "artist_name1")) %>%
+          replace_na(list(top_short=0, top_medium=0, top_long=0))
+        
+        tracks_long <- tracks %>%
+          pivot_longer(one_of(feature_cols), names_to="feature") %>%
+          mutate(feature=factor(feature, feature_cols),
+                 tooltip=paste0(name,"<br>",feature," = ", round(value, 2), 
+                                ifelse(feature == "loudness", "dB", ifelse(feature == "tempo", "BPM", "")))) %>%
+          group_by(feature) %>%
+          mutate(bin=cut(value, 20, F)) %>%
+          ungroup()
+        
+        tracks_long <- tracks %>%
+          mutate(loudness=rescale(loudness, c(0, 1), range(feature_bins$loudness)),
+                 tempo=rescale(tempo, c(0, 1), range(feature_bins$tempo))) %>%
+          pivot_longer(one_of(feature_cols), names_to="feature", values_to="scaled") %>%
+          select(scaled) %>%
+          bind_cols(tracks_long)
+        
+        stat <- tracks_long %>%
+          group_by(feature) %>%
+          summarize(median=median(value), dip=dip(value)) %>%
+          mutate(feature=as.character(feature)) %>%
+          inner_join(stat_all, "feature", suffix=c("_user", "_all")) %>%
+          mutate(delta=median_user - median_all,
+                 label=ifelse(feature == "valence",
+                              ifelse(dip > 0.05 & abs(delta) < 0.1, "mixed mood",
+                                     ifelse(delta > 0.2, "pretty happy",
+                                            ifelse(delta > 0, "slightly happy",
+                                                   ifelse(delta < 0.2, "pretty sad", "slightly sad")))),
+                              ifelse(feature == "energy",
+                                     ifelse(dip > 0.05 & abs(delta) < 0.1, "both higher and lower energy",
+                                            ifelse(abs(delta) < 0.1, "comparable in energy",
+                                                   ifelse(delta > 0.1, "higher energy", "lower energy"))),
+                                     ifelse(feature == "danceability",
+                                            ifelse(dip > 0.05 & abs(delta) < 0.1, "",
+                                                   ifelse(delta > 0, " and more danceable", " and less danceable")),""))))
+        
+        setProgress(0.8, "creating new features")
+        
+        tracks_before <- tracks$added_date %>%
+          unique() %>%
+          na.omit() %>%
+          map_dfr(function(date) {
+            tracks_long %>%
+              filter(added_date <= date) %>%
+              group_by(feature) %>%
+              summarize(value_lower=quantile(value, 0.25),
+                        value_median=median(value),
+                        value_mean=mean(value),
+                        value_upper=quantile(value, 0.75)) %>%
+              mutate(added_date=date)
+          })
+        
+        tracks_before <- tracks %>%
+          group_by(added_date) %>%
+          tally() %>%
+          inner_join(tracks_before, "added_date") %>%
+          mutate(added_year=year(added_date)) %>%
+          arrange(added_date)
+        
+        track_genres <- tracks %>%
+          select(track_id=id, artists, added_month) %>%
+          unnest(artists) %>%
+          inner_join(select(artists, id, genres), "id") %>%
+          select(id=track_id, added_month, genres) %>%
+          unnest(genres) %>%
+          rename(genre=genres)
+        
+        genres_top <- track_genres %>%
+          group_by(genre) %>%
+          tally() %>%
+          arrange(desc(n)) %>%
+          slice(1:10) %>%
+          pull(genre)
+        
+        genres_long <-  track_genres %>%
+          filter(genre %in% genres_top) %>%
+          inner_join(features, "id") %>%
+          select(one_of("genre", feature_cols)) %>%
+          mutate(genre=factor(genre, genres_top)) %>%
+          pivot_longer(one_of(feature_cols), names_to="feature")
+        
+        genres_before <- tracks$added_month %>%
+          unique() %>%
+          na.omit() %>%
+          map_dfr(function(date) {
+            track_genres %>%
+              filter(added_month <= date) %>%
+              group_by(genre) %>%
+              tally() %>%
+              mutate(share=n / sum(n), added_month=date)
+          })
+        
+        genres_before <- genres_before %>%
+          mutate(genre=factor(genre, genres_top), added_year=year(added_month)) %>%
+          drop_na()
+      })
       
-      setProgress(0.7, "formatting")
-      
-      react$bars_all <- features_all %>%
-        mutate(bin=seq(nrow(.))) %>%
-        pivot_longer(one_of(feature_cols), names_to="feature") %>%
-        mutate(feature=factor(feature, feature_cols)) %>%
-        group_by(feature) %>%
-        mutate(scaled=value / max(value))
-      
-      stat_all <- features_all %>%
-        summarize(valence=median_estimate(valence),
-                  danceability=median_estimate(danceability),
-                  energy=median_estimate(energy),
-                  tempo=median_estimate(tempo, feature_bins$tempo)) %>%
-        pivot_longer(everything(), names_to="feature", values_to="median")
-      
-      tracks_top_wide <- tracks_top %>%
-        mutate(artist_name1=map_chr(artists, function(x) x$name[1]),
-               count=1) %>%
-        pivot_wider(one_of("name","artist_name1"), names_from=term, values_from=count)
-      
-      react$tracks <- tracks_saved  %>%
-        bind_rows(tracks_top) %>%
-        transmute(id,
-                  name,
-                  added_at=as_datetime(added_at),
-                  added_date=as_date(added_at),
-                  added_month=floor_date(added_date, "month"),
-                  artists,
-                  artist_name1=map_chr(artists, function(x) x$name[1]),
-                  artist_names=map_chr(artists, function(x) glue_collapse(x$name, ", ")),
-                  album_name=album.name,
-                  label=paste(artist_names, "-", name),
-                  preview_url,
-                  play=ifelse(is.na(preview_url), "", as.character(icon("play", lib="glyphicon")))) %>%
-        arrange(added_date) %>%
-        distinct(name, artist_name1, .keep_all=T) %>%
-        inner_join(select(features, one_of("id", feature_cols)), "id") %>%
-        left_join(tracks_top_wide, c("name", "artist_name1")) %>%
-        replace_na(list(top_short=0, top_medium=0, top_long=0))
-      
-      tracks_long <- react$tracks %>%
-        pivot_longer(one_of(feature_cols), names_to="feature") %>%
-        mutate(feature=factor(feature, feature_cols),
-               tooltip=paste0(name,"<br>",feature," = ", round(value, 2), 
-                              ifelse(feature == "loudness", "dB", ifelse(feature == "tempo", "BPM", "")))) %>%
-        group_by(feature) %>%
-        mutate(bin=cut(value, 20, F)) %>%
-        ungroup()
-      
-      react$tracks_long <- react$tracks %>%
-        mutate(loudness=rescale(loudness, c(0, 1), range(feature_bins$loudness)),
-               tempo=rescale(tempo, c(0, 1), range(feature_bins$tempo))) %>%
-        pivot_longer(one_of(feature_cols), names_to="feature", values_to="scaled") %>%
-        select(scaled) %>%
-        bind_cols(tracks_long)
-      
-      react$stat <- react$tracks_long %>%
-        group_by(feature) %>%
-        summarize(median=median(value), dip=dip(value)) %>%
-        mutate(feature=as.character(feature)) %>%
-        inner_join(stat_all, "feature", suffix=c("_user", "_all")) %>%
-        mutate(delta=median_user - median_all,
-               label=ifelse(feature == "valence",
-                            ifelse(dip > 0.05 & abs(delta) < 0.1, "mixed mood",
-                                   ifelse(delta > 0.2, "pretty happy",
-                                          ifelse(delta > 0, "slightly happy",
-                                                 ifelse(delta < 0.2, "pretty sad", "slightly sad")))),
-                            ifelse(feature == "energy",
-                                   ifelse(dip > 0.05 & abs(delta) < 0.1, "both higher and lower energy",
-                                          ifelse(abs(delta) < 0.1, "comparable in energy",
-                                                 ifelse(delta > 0.1, "higher energy", "lower energy"))),
-                                   ifelse(feature == "danceability",
-                                          ifelse(dip > 0.05 & abs(delta) < 0.1, "",
-                                                 ifelse(delta > 0, " and more danceable", " and less danceable")),""))))
-      
-      setProgress(0.8, "creating new features")
-      
-      tracks_before <- react$tracks$added_date %>%
-        unique() %>%
-        na.omit() %>%
-        map_dfr(function(date) {
-          tracks_long %>%
-            filter(added_date <= date) %>%
-            group_by(feature) %>%
-            summarize(value_lower=quantile(value, 0.25),
-                      value_median=median(value),
-                      value_mean=mean(value),
-                      value_upper=quantile(value, 0.75)) %>%
-            mutate(added_date=date)
-        })
-      
-      react$tracks_before <- react$tracks %>%
-        group_by(added_date) %>%
-        tally() %>%
-        inner_join(tracks_before, "added_date") %>%
-        mutate(added_year=year(added_date)) %>%
-        arrange(added_date)
-      
-      track_genres <- react$tracks %>%
-        select(track_id=id, artists, added_month) %>%
-        unnest(artists) %>%
-        inner_join(select(artists, id, genres), "id") %>%
-        select(id=track_id, added_month, genres) %>%
-        unnest(genres) %>%
-        rename(genre=genres)
-      
-      genres_top <- track_genres %>%
-        group_by(genre) %>%
-        tally() %>%
-        arrange(desc(n)) %>%
-        slice(1:10) %>%
-        pull(genre)
-      
-      react$genres_long <-  track_genres %>%
-        filter(genre %in% genres_top) %>%
-        inner_join(features, "id") %>%
-        select(one_of("genre", feature_cols)) %>%
-        mutate(genre=factor(genre, genres_top)) %>%
-        pivot_longer(one_of(feature_cols), names_to="feature")
-      
-      genres_before <- react$tracks$added_month %>%
-        unique() %>%
-        na.omit() %>%
-        map_dfr(function(date) {
-          track_genres %>%
-            filter(added_month <= date) %>%
-            group_by(genre) %>%
-            tally() %>%
-            mutate(share=n / sum(n), added_month=date)
-        })
-      
-      react$genres_before <- genres_before %>%
-        mutate(genre=factor(genre, genres_top), added_year=year(added_month)) %>%
-        drop_na()
-    })
+      # save(tracks_saved, tracks_top, features, artists,
+      #      bars_all, tracks, tracks_long, stat, tracks_before, genres_long, genres_before, file="spotify.RData")
+
+    } else {
+      load("spotify.RData")
+    }
+    
+    react$bars_all <- bars_all
+    react$tracks <- tracks
+    react$tracks_long <- tracks_long
+    react$stat <- stat
+    react$tracks_before <- tracks_before
+    react$genres_long <- genres_long
+    react$genres_before <- genres_before
   })
   
   output$summary <- renderUI({

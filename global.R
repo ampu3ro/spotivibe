@@ -21,8 +21,6 @@ suppressPackageStartupMessages({
   library(showtext)
 })
 
-debug <- interactive()
-
 api <- "https://api.spotify.com/v1"
 scope <- "user-library-read,user-top-read"
 host <- "127.0.0.1" # whitelisted on Spotify
