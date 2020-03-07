@@ -85,6 +85,15 @@ shinyServer(function(input, output, session) {
     
     get_json <- function(url) {
       response <- GET(url, token)
+      
+      if (status_code(response) == 429) {
+        retry_after <- headers(response)$`Retry-After`
+        setProgress(detail=glue("API query limits reached, retrying after {retry_after} seconds"))
+        
+        Sys.sleep(retry_after)
+        response <- GET(url, token)
+      }
+      
       stop_for_status(response)
       fromJSON(httr::content(response, "text", encoding="UTF-8"), flatten=T)
     }
