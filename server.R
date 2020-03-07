@@ -194,7 +194,7 @@ shinyServer(function(input, output, session) {
                     album_name=album.name,
                     label=paste(artist_names, "-", name),
                     preview_url,
-                    play=ifelse(is.na(preview_url), "", as.character(icon("play", lib="glyphicon")))) %>%
+                    play=ifelse(is.na(preview_url), "", as.character(icon("play-circle")))) %>%
           arrange(added_date) %>%
           distinct(name, artist_name1, .keep_all=T) %>%
           inner_join(select(features, one_of("id", feature_cols)), "id") %>%
