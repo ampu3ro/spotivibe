@@ -1,6 +1,7 @@
 
 suppressPackageStartupMessages({
   library(shiny)
+  library(shinyBS)
   library(curl)
   library(httr)
   library(httpuv)
@@ -75,6 +76,16 @@ feature_labels <- c(
   loudness="psychologically louder",
   tempo="faster / higher BPM"
 )
+
+feature_definitions <- paste0("valence (0-1): mood, from sad/angry to happy/cheerful<br>",
+                              "energy (0-1): perceptual intensity and activity<br>",
+                              "danceability (0-1): suitability for dancing<br>",
+                              "instrumentalness (0-1): lack of vocals<br>",
+                              "acousticness (0-1): confidence that the track is acoustic<br>",
+                              "speechiness (0-1): presence of spoken word<br>",
+                              "liveness (0-1): likelihood of the presence of an audience<br>",
+                              "loudness (-60-0 dB): psychological amplitude/strength<br>",
+                              "tempo (0-220 BPM): speed, average beats per minute")
 
 theme <- "www/spotify.css"
 

@@ -64,6 +64,13 @@ audio {
   background-color: #040404;
 }
 
+.tooltip-inner {
+  background-color:gray;
+  color:white;
+  text-align: left;
+  max-width: 100%;
+}
+
 .selectize-input {
   background-color: #282828 !important;
   border: none !important;
