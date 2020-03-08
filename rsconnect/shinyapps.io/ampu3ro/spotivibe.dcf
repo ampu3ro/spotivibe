@@ -1,0 +1,12 @@
+name: spotivibe
+title: spotivibe
+username:
+account: ampu3ro
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 1914427
+bundleId: 2861674
+url: https://ampu3ro.shinyapps.io/spotivibe/
+when: 1583680505.48093
+asMultiple: FALSE
+asStatic: FALSE
