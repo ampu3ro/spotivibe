@@ -217,6 +217,13 @@ shinyServer(function(input, output, session) {
         mutate(bin=cut(value, 20, F)) %>%
         ungroup()
       
+      tracks_long <- tracks %>%
+        mutate(loudness=rescale(loudness, c(0, 1), range(feature_bins$loudness)),
+               tempo=rescale(tempo, c(0, 1), range(feature_bins$tempo))) %>%
+        pivot_longer(one_of(feature_cols), names_to="feature", values_to="scaled") %>%
+        select(scaled) %>%
+        bind_cols(tracks_long)
+      
       setProgress(0.8, "creating new features")
       
       stat_long <- tracks_long$added_month %>%
@@ -282,12 +289,13 @@ shinyServer(function(input, output, session) {
         }) %>%
         mutate(id=seq(n()))
       
+      obj <- c("tracks_saved", "tracks_top", "features", "artists", "bars_all", "stat_all", "stat_long",
+               "tracks", "tracks_long", "track_artists", "collaborators", "edges_all")
+      
+      env <- environment()
+      
+      react$data <- sapply(obj, get, env=env, simplify=F)
     })
-    
-    obj <- c("tracks_saved", "tracks_top", "features", "artists", "bars_all", "stat_all", "stat_long",
-             "tracks", "tracks_long", "track_genres", "track_artists", "collaborators", "edges_all")
-    
-    react$data <- sapply(obj, get, simplify=F)
   })
   
   observe({
@@ -309,10 +317,11 @@ shinyServer(function(input, output, session) {
   observe({
     if (!loading()) {
       choices <- react$collaborators %>%
+        ungroup() %>%
         distinct(id, .keep_all=T) %>%
-        arrange(name) %>%
-        transmute(set_names(id, name)) %>%
-        pull(1)
+        arrange(name)
+      
+      choices <- set_names(choices$id, choices$name)
       
       updateSelectInput(session, "artist_id", choices=choices)
     }
