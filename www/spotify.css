@@ -74,17 +74,15 @@ audio {
   background-color: #040404;
 }
 
-.tooltip {
-  opacity: 100% !important; 
-}
-
-.tooltip-inner {
-  background-color:gray;
+.tippy-tooltip {
   color:white;
   text-align: left;
-  max-width: 100%;
   font-size: 12pt;
-  border-radius: 0px !important;
+  border-radius: 0px;
+}
+
+.tippy-tooltip.gray-theme .tippy-backdrop {
+  background-color: gray;
 }
 
 .selectize-input {

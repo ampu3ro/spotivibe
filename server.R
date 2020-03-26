@@ -7,6 +7,10 @@ shinyServer(function(input, output, session) {
     react$code <- parseQueryString(session$clientData$url_search)$code
   })
   
+  output$metrics <- renderUI({
+    span(style="text-decoration-line: underline; text-decoration-style: dotted;", "9 quantitative metrics")
+  })
+  
   output$ui <- renderUI({
     if (is.null(react$code) && input$dataset == "yours") {
       fluidPage(
@@ -328,8 +332,8 @@ shinyServer(function(input, output, session) {
       unique()
     
     gg <- ggplot()+
-      geom_step(aes(added_month, value), line, color=color$green, size=1.5, alpha=0.8)+
-      geom_point_interactive(aes(added_month, value, tooltip=tooltip, data_id=added_month), points, color=color$green, size=14, alpha=0.8)+
+      geom_step(aes(added_month, value), line, color=color[[input$feature]], size=1.5, alpha=0.8)+
+      geom_point_interactive(aes(added_month, value, tooltip=tooltip, data_id=added_month), points, color=color[[input$feature]], size=14, alpha=0.8)+
       scale_y_continuous(expand=expand_scale(0.2))+
       theme_spotify()+
       theme(plot.background=rect_black, panel.background=rect_black, axis.line=blank, axis.ticks=blank, axis.title=blank)
@@ -350,7 +354,7 @@ shinyServer(function(input, output, session) {
     month_selected <- if (length(input$month_selected)) input$month_selected else max(react$stat_long$added_month)
     
     label <- list(spotify=glue("<span style='color:grey30'>Spotify's library</span>"),
-                  your=glue("<span style='color:{color$green}'>your library</span>"))
+                  your=glue("<span style='color:{color[[input$feature]]}'>your library</span>"))
     
     react$stat_long %>%
       filter(feature == input$feature & metric == "median" & added_month == month_selected) %>%
@@ -400,10 +404,10 @@ shinyServer(function(input, output, session) {
     
     gg <- ggplot()+
       geom_col(aes(bin, scaled, fill="Spotify library"), bars_all, color="grey30", width=1)+
-      geom_col(aes(bin, scaled, fill=your_tracks), bars, alpha=0.4, width=0.85)+
+      geom_col(aes(bin, scaled, fill=your_tracks), bars, alpha=0.5, width=0.85)+
       geom_text(aes(bin, scaled, label=comma(n)), bars, size=6, family=nova, color=color$grey, vjust=-0.2)+
-      geom_jitter_interactive(aes(bin, y_pos, shape=top, tooltip=tooltip, data_id=id), points, size=7, alpha=0.2, color=color$green, fill=color$slate, width=0.2, height=0)+
-      scale_fill_manual(values=setNames(c("grey30", color$green), c("Spotify library", your_tracks)))+
+      geom_jitter_interactive(aes(bin, y_pos, shape=top, tooltip=tooltip, data_id=id), points, size=7, alpha=0.3, color=color[[input$feature]], fill=color$slate, width=0.2, height=0)+
+      scale_fill_manual(values=setNames(c("grey30", color[[input$feature]]), c("Spotify library", your_tracks)))+
       scale_shape_manual(values=c("TRUE"=21, "FALSE"=19), guide=F)+
       labs(x=feature_labels[input$feature], y="more tracks / time", fill="")+
       theme_spotify()
@@ -446,7 +450,7 @@ shinyServer(function(input, output, session) {
       slice(1:10) %>%
       mutate(index=seq(n(), 1)) %>%
       ggplot()+
-      geom_col_interactive(aes(index, n, tooltip=paste0(name, ": ", comma(n)), data_id=id), fill=color$green, alpha=0.6)+
+      geom_col_interactive(aes(index, n, tooltip=paste0(name, ": ", comma(n)), data_id=id), fill=color[[input$feature]], alpha=0.6)+
       coord_flip()+
       theme_spotify()+
       theme(plot.background=rect_black, panel.background=rect_black, axis.line=blank, axis.ticks=blank, axis.title=blank)
@@ -500,10 +504,10 @@ shinyServer(function(input, output, session) {
     fire_edge <- "function(x) { Shiny.onInputChange('network_fired', x) ;}"
     
     visNetwork(nodes, edges, background=color$slate) %>%
-      visNodes(color=list(background="rgba(29, 185, 84, 0.8)", border="rgba(29, 185, 84, 0.8)", highlight=color$purple),
+      visNodes(color=list(background=rgba_string(color[[input$feature]]), border=rgba_string(color[[input$feature]]), highlight=rgba_string("white")),
                font=list(face=nova, color=color$grey)) %>%
       visEdges(scaling=list(min=1, max=7),
-               color=list(color=color$grey, highlight="rgba(255, 255, 255, 0.5)", opacity=0.2)) %>%
+               color=list(color=color$grey, highlight=rgba_string("white", 0.5), opacity=0.2)) %>%
       visOptions(nodesIdSelection=list(enabled=T, selected=input$artist_id, style="width:0px; height:0px; border:none")) %>%
       visEvents(selectEdge=fire_edge, deselectEdge=fire_edge) %>%
       visInteraction(tooltipStyle=glue("position: fixed; visibility:hidden; {css_tooltip}"))
