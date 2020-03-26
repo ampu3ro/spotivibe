@@ -2,7 +2,8 @@
 fluidPage(
   tags$head(includeCSS(theme)),
   fluidPage(
-    titlePanel("SpotiVibe"),
+    title="spotivibe",
+    img(src="spotivibe.png", height="64px", style="padding-top:24px"),
     tags$script("Shiny.addCustomMessageHandler('redirect', function(url) {location.replace(url)});"),
     div(id="ppitest", style="width:1in;padding:0px;visible:hidden"),
     tags$script(src="resize.js"),

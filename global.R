@@ -93,7 +93,7 @@ color <- list(black="#040404",
               tempo="#c97d55")
 
 bull <- map2(color, names(color), function(x, y) {
-  glue("<span style=color:{x};font-size:20pt>&bull;</span> <strong>{y}</strong>")
+  glue("<span style=color:{x};font-size:20pt;font-size:3em;line-height:22px;vertical-align:-8px>&bull;</span> <strong>{y}</strong>")
 })
 
 feature_definitions <- glue("{bull$valence} (0-1): mood, from sad/angry to happy/cheerful<br>",
