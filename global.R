@@ -106,6 +106,10 @@ color <- list(green="#1db954",
                         loudness="#4102f7",
                         tempo="#c97d55"))
 
+rgba_string <- function(hex, alpha=0.8) {
+  paste0("rgba(", glue_collapse(c(grDevices::col2rgb(hex)[,1], alpha), ", "), ")")
+}
+
 css_tooltip <- "background-color:gray; color:white; opacity:90%"
 css_selection <- glue("fill:{color$purple}")
 css_hover <- "fill:white; color:white"
