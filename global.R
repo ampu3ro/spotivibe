@@ -8,6 +8,7 @@ suppressPackageStartupMessages({
   library(jsonlite)
   library(purrr)
   library(tidyr)
+  library(tibble)
   library(dplyr)
   library(glue)
   library(stringr)
@@ -19,6 +20,7 @@ suppressPackageStartupMessages({
   library(ggplot2)
   library(ggrepel)
   library(ggiraph)
+  library(visNetwork)
   library(showtext)
 })
 
@@ -89,8 +91,20 @@ feature_definitions <- paste0("valence (0-1): mood, from sad/angry to happy/chee
 
 theme <- "www/spotify.css"
 
-color <- list(green="#1db954", slate="#282828", purple="#ac68a0",
-              palette=c("#16e68b", "#ccf462", "#b02a97", "#9cf0e1", "#ff4633", "#ffcfd6", "#ef1e31", "#4102f7", "#c97d55"))
+color <- list(green="#1db954",
+              black="#040404",
+              slate="#282828",
+              grey="#909090",
+              purple="#ac68a0",
+              palette=c(valence="#16e68b",
+                        energy="#ccf462",
+                        danceability="#b02a97",
+                        instrumentalness="#9cf0e1",
+                        acousticness="#ff4633",
+                        speechiness="#ffcfd6",
+                        liveness="#ef1e31",
+                        loudness="#4102f7",
+                        tempo="#c97d55"))
 
 css_tooltip <- "background-color:gray; color:white; opacity:90%"
 css_selection <- glue("fill:{color$purple}")
@@ -103,8 +117,9 @@ showtext_auto()
 if (.Platform$OS.type == "windows")
   grDevices::windowsFonts("ProximaNova-Medium"=grDevices::windowsFont(nova))
 
-element_text_nova <- function(size=12, ...) element_text(family=nova, color="white", size=size, ...)
+element_text_nova <- function(size=16, ...) element_text(family=nova, color="white", size=size, ...)
 rect <- element_rect(fill=color$slate, color=NA)
+rect_black <- element_rect(fill=color$black)
 blank <- element_blank()
 arrow <- grid::arrow(length=grid::unit(0.1, "inches"))
 
@@ -114,13 +129,13 @@ theme_spotify <- function(...) {
         plot.background=rect,
         panel.background=rect,
         panel.grid=blank,
-        title=element_text_nova(size=14),
+        title=element_text_nova(),
         strip.text=element_text_nova(),
         strip.background=rect,
         legend.position="top",
         legend.direction="horizontal",
         legend.key=blank,
-        legend.text=element_text_nova(size=10),
+        legend.text=element_text_nova(),
         axis.line=element_line(color="white", arrow=arrow),
         axis.title=element_text_nova(hjust=1, vjust=1),
         axis.text=blank,

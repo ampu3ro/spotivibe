@@ -16,60 +16,68 @@ shinyServer(function(input, output, session) {
     } else if (!is.null(react$tracks)) {
       fluidPage(tags$head(includeCSS(theme)),
                 hr(),
-                uiOutput("summary"),
                 br(),
                 fluidRow(
-                  column(12,
+                  column(4,
                          div(class="inline",
-                             "Start with a single feature like"),
+                             "Start by selecting a single feature like"),
                          div(class="inline",
-                             selectInput("feature", NULL, feature_cols, "valence", width="140px")),
-                         div(class="inline", 
-                             "to understand how your top tracks from the last"),
-                         div(class="inline",
-                             selectInput("term", NULL, c("4 weeks"="top_short", "6 months"="top_medium", "several years"="top_long"), width="120px")),
-                         div("stack up. Click on a point to display other tracks in your library with similar values. This should give you a feel for the quality of the feature."),
+                             selectInput("feature", NULL, feature_cols, "valence", width="130px")),
                          div(style="clear:both"),
-                  )
-                ),
-                br(),
-                fluidRow(
-                  column(6, ggiraphOutput("points")),
-                  column(6, DT::dataTableOutput("similar"), htmlOutput("player"))
-                ),
-                hr(),
-                fluidRow(
-                  column(12,
-                         div("By counting occurences for ranges of values, you can see how all your saved tracks are distributed (green).",
-                             "The gray histogram represents the distribution of all tracks on Spotify so gives a sense of how you compare on each feature.",
-                             "The green line follows the median value over time, showing how your tastes have changed.",
-                             "Click on a point (when you added more tracks than usual) to see the distribution at that time.")
-                  )
-                ),
-                br(),
-                fluidRow(
-                  column(6, ggiraphOutput("bars")),
-                  column(6, ggiraphOutput("ribbons"))
-                ),
-                hr(),
-                fluidRow(
-                  column(12,
-                         div("Another way to cut the data is to break down the audio feature by prominent genres in your library, though it's important",
-                             "to note that this is a rough approximation since Spotify only assigns those labels to artists, not tracks.",
-                             "Click on a box to highlight that genre's share trend over time."),
                          br(),
-                         htmlOutput("insight")
-                  )
+                         div(class="inline",
+                             "Then adjust the time, using"),
+                         div(class="inline",
+                             selectInput("metric", NULL, c("track count"="n", "median value"="median"), width="140px")),
+                         div("to find a month with a jump. Click on a point below to reflect your library at that time."),
+                         div(style="clear:both"),
+                         br(),
+                         ggiraphOutput("month"),
+                         br(),
+                         span("Bars show track counts for ranges of"),
+                         textOutput("feature_text", inline=T),
+                         span("values, and points are sample tracks in those ranges with top tracks shaded darker.",
+                              "Click on one to hear a sample and get a feel for the feature."),
+                         div(style="height:1em"),
+                         uiOutput("summary")
+                  ),
+                  column(8,
+                         ggiraphOutput("distribution"),
+                         div(style="height:0.5em"),
+                         htmlOutput("player"))
                 ),
-                br(),
+                hr(),
                 fluidRow(
-                  column(6, ggiraphOutput("box")),
-                  column(6, ggiraphOutput("lines"))
+                  column(4,
+                         br(),
+                         div("Another interesting aspect to explore is the network of collaborations between artists in your library."),
+                         br(),
+                         div(class="inline",
+                             "Pick an artist like"),
+                         div(class="inline",
+                             selectInput("artist_id", NULL, NULL, width="150px")),
+                         div("or find one with a higher number of direct collaborations by selecting a bar below."),
+                         div(style="clear:both"),
+                         ggiraphOutput("artist"),
+                         span("Nodes (bubbles representing artists) are sized relative to artist popularity and edges",
+                              "(lines representing tracks) relative to track"),
+                         textOutput("feature_text2", inline=T),
+                         div(style="height:1em"),
+                         div("Hover over the nodes to show artist genres and over the edges to show track names.",
+                             "Click on an edge to play a sample of that track if available. Scroll to zoom in/out and drag nodes",
+                             "around to reposition the network.")),
+                  column(8,
+                         visNetworkOutput("network", height="500px"),
+                         div(style="height:2em"),
+                         htmlOutput("player2"))
                 ),
-                br()
+                hr()
       )
     }
   })
+  
+  output$feature_text <- renderText(input$feature)
+  output$feature_text2 <- renderText(glue("{input$feature}."))
   
   observeEvent(input$connect, {
     url <- oauth2.0_authorize_url(endpoint, app, scope=scope)
@@ -180,7 +188,6 @@ shinyServer(function(input, output, session) {
         pivot_wider(one_of("name","artist_name1"), names_from=term, values_from=count)
       
       tracks <- tracks_saved  %>%
-        bind_rows(tracks_top) %>%
         transmute(id,
                   name,
                   added_at=as_datetime(added_at),
@@ -190,333 +197,336 @@ shinyServer(function(input, output, session) {
                   artist_name1=map_chr(artists, function(x) x$name[1]),
                   artist_names=map_chr(artists, function(x) glue_collapse(x$name, ", ")),
                   album_name=album.name,
-                  label=paste(artist_names, "-", name),
                   preview_url,
-                  play=ifelse(is.na(preview_url), "", as.character(icon("play-circle")))) %>%
+                  popularity,
+                  tooltip=paste0(artist_names, " - ", name, ifelse(is.na(added_date), "", paste("<br>added ", added_date)))) %>%
         arrange(added_date) %>%
-        distinct(name, artist_name1, .keep_all=T) %>%
+        distinct(name, artist_name1, .keep_all=T) %>% # different versions of the same song
         inner_join(select(features, one_of("id", feature_cols)), "id") %>%
         left_join(tracks_top_wide, c("name", "artist_name1")) %>%
         replace_na(list(top_short=0, top_medium=0, top_long=0))
       
       tracks_long <- tracks %>%
         pivot_longer(one_of(feature_cols), names_to="feature") %>%
-        mutate(feature=factor(feature, feature_cols),
-               tooltip=paste0(name,"<br>",feature," = ", round(value, 2), 
-                              ifelse(feature == "loudness", "dB", ifelse(feature == "tempo", "BPM", "")))) %>%
+        mutate(feature=factor(feature, feature_cols)) %>%
         group_by(feature) %>%
         mutate(bin=cut(value, 20, F)) %>%
         ungroup()
       
-      tracks_long <- tracks %>%
-        mutate(loudness=rescale(loudness, c(0, 1), range(feature_bins$loudness)),
-               tempo=rescale(tempo, c(0, 1), range(feature_bins$tempo))) %>%
-        pivot_longer(one_of(feature_cols), names_to="feature", values_to="scaled") %>%
-        select(scaled) %>%
-        bind_cols(tracks_long)
-      
-      stat <- tracks_long %>%
-        group_by(feature) %>%
-        summarize(median=median(value), dip=dip(value)) %>%
-        mutate(feature=as.character(feature)) %>%
-        inner_join(stat_all, "feature", suffix=c("_user", "_all")) %>%
-        mutate(delta=median_user - median_all,
-               label=ifelse(feature == "valence",
-                            ifelse(dip > 0.05 & abs(delta) < 0.1, "mixed mood",
-                                   ifelse(delta > 0.2, "pretty happy",
-                                          ifelse(delta > 0, "slightly happy",
-                                                 ifelse(delta < 0.2, "pretty sad", "slightly sad")))),
-                            ifelse(feature == "energy",
-                                   ifelse(dip > 0.05 & abs(delta) < 0.1, "both higher and lower energy",
-                                          ifelse(abs(delta) < 0.1, "comparable in energy",
-                                                 ifelse(delta > 0.1, "higher energy", "lower energy"))),
-                                   ifelse(feature == "danceability",
-                                          ifelse(dip > 0.05 & abs(delta) < 0.1, "",
-                                                 ifelse(delta > 0, " and more danceable", " and less danceable")),""))))
-      
       setProgress(0.8, "creating new features")
       
-      tracks_before <- tracks$added_date %>%
+      stat_long <- tracks_long$added_month %>%
         unique() %>%
-        na.omit() %>%
         map_dfr(function(date) {
           tracks_long %>%
-            filter(added_date <= date) %>%
-            group_by(feature) %>%
-            summarize(value_lower=quantile(value, 0.25),
-                      value_median=median(value),
-                      value_mean=mean(value),
-                      value_upper=quantile(value, 0.75)) %>%
-            mutate(added_date=date)
-        })
-      
-      tracks_before <- tracks %>%
-        group_by(added_date) %>%
-        tally() %>%
-        inner_join(tracks_before, "added_date") %>%
-        mutate(added_year=year(added_date)) %>%
-        arrange(added_date)
-      
-      track_genres <- tracks %>%
-        select(track_id=id, artists, added_month) %>%
-        unnest(artists) %>%
-        inner_join(select(artists, id, genres), "id") %>%
-        select(id=track_id, added_month, genres) %>%
-        unnest(genres) %>%
-        rename(genre=genres)
-      
-      genres_top <- track_genres %>%
-        group_by(genre) %>%
-        tally() %>%
-        arrange(desc(n)) %>%
-        slice(1:10) %>%
-        pull(genre)
-      
-      genres_long <-  track_genres %>%
-        filter(genre %in% genres_top) %>%
-        inner_join(features, "id") %>%
-        select(one_of("genre", feature_cols)) %>%
-        mutate(genre=factor(genre, genres_top)) %>%
-        pivot_longer(one_of(feature_cols), names_to="feature")
-      
-      genres_before <- tracks$added_month %>%
-        unique() %>%
-        na.omit() %>%
-        map_dfr(function(date) {
-          track_genres %>%
             filter(added_month <= date) %>%
-            group_by(genre) %>%
-            tally() %>%
-            mutate(share=n / sum(n), added_month=date)
-        })
+            group_by(feature) %>%
+            summarize(n=n(), median=median(value), mean=mean(value), dip=dip(value)) %>%
+            mutate(added_month=date)
+        }) %>%
+        pivot_longer(c("n", "median", "mean"), names_to="metric") %>%
+        group_by(feature, metric) %>%
+        mutate(change=c(NA, diff(value))/lag(value), 
+               tooltip=paste(format(added_month, "%b '%y"), ifelse(is.na(change), "", paste0(ifelse(change>0, "+", ""), percent(change, 1))))) %>%
+        ungroup()
       
-      genres_before <- genres_before %>%
-        mutate(genre=factor(genre, genres_top), added_year=year(added_month)) %>%
-        drop_na()
+      track_artists <- tracks %>%
+        select(track_id=id, track_name=name, artist_names, artists) %>%
+        unnest(artists) %>%
+        group_by(track_id) %>%
+        transmute(artist_id=id, track_name, artist_names, n_artists=n(), index=seq(n())) %>%
+        filter(n_artists > 1)
+      
+      collaborators <- track_artists$artist_id %>%
+        unique() %>%
+        map_dfr(function(x) {
+          track_artists %>%
+            ungroup() %>%
+            filter(artist_id == x) %>%
+            pull(track_id) %>%
+            unique() %>%
+            map_dfr(function(y) {
+              track_artists %>%
+                filter(track_id %in% y & !artist_id %in% x)
+            }) %>%
+            distinct(artist_id) %>%
+            rename(collaborator_id=artist_id) %>%
+            mutate(id=x)
+        }) %>%
+        left_join(artists, "id")
+        
+      suppressMessages({
+        combinations <- track_artists$n_artists %>%
+          unique() %>%
+          map_dfr(function(x) {
+            utils::combn(x, 2) %>%
+              t() %>%
+              as_tibble(.name_repair="unique") %>%
+              rename(!!c(from="...1", to="...2"))
+          }, .id="n") %>%
+          mutate(n_artists=as.integer(n)+1)
+      })
+      
+      edges_all <- track_artists %>%
+        group_split() %>%
+        map_dfr(function(x) {
+          combinations %>%
+            inner_join(x, c(n_artists="n_artists", from="index")) %>%
+            transmute(n_artists, from=artist_id, to) %>%
+            inner_join(x, c(n_artists="n_artists", to="index")) %>%
+            transmute(track_id, track_name, artist_names, from, to=artist_id)
+        }) %>%
+        mutate(id=seq(n()))
+      
     })
     
-    react$data <- list(tracks_saved=tracks_saved, tracks_top=tracks_top, features=features, artists=artists,
-                       bars_all=bars_all, tracks=tracks, tracks_long=tracks_long, stat=stat, tracks_before=tracks_before,
-                       genres_long=genres_long, genres_before=genres_before)
+    obj <- c("tracks_saved", "tracks_top", "features", "artists", "bars_all", "stat_all", "stat_long",
+             "tracks", "tracks_long", "track_genres", "track_artists", "collaborators", "edges_all")
+    
+    react$data <- sapply(obj, get, simplify=F)
   })
   
   observe({
     data <- if (input$dataset == "mine") readRDS("data.rds") else react$data
     
+    react$artists <- data$artists
+    react$stat_all <- data$stat_all
+    react$stat_long <- data$stat_long
     react$bars_all <- data$bars_all
     react$tracks <- data$tracks
     react$tracks_long <- data$tracks_long
-    react$stat <- data$stat
-    react$tracks_before <- data$tracks_before
-    react$genres_long <- data$genres_long
-    react$genres_before <- data$genres_before
+    react$track_artists <- data$track_artists
+    react$collaborators <- data$collaborators
+    react$edges_all <- data$edges_all
+  })
+  
+  loading <- reactive(is.null(react$artists) || is.null(input$feature))
+  
+  observe({
+    if (!loading()) {
+      choices <- react$collaborators %>%
+        distinct(id, .keep_all=T) %>%
+        arrange(name) %>%
+        transmute(set_names(id, name)) %>%
+        pull(1)
+      
+      updateSelectInput(session, "artist_id", choices=choices)
+    }
+  })
+  
+  output$month <- renderggiraph({
+    if (loading())
+      return()
+    
+    line <- react$stat_long %>%
+      filter(feature == input$feature & metric == input$metric)
+    
+    points <- line %>%
+      arrange(desc(abs(change))) %>%
+      slice(1:5) %>%
+      bind_rows(slice(line, 1), slice(line, n())) %>%
+      unique()
+    
+    gg <- ggplot()+
+      geom_step(aes(added_month, value), line, color=color$green, size=1.5, alpha=0.8)+
+      geom_point_interactive(aes(added_month, value, tooltip=tooltip, data_id=added_month), points, color=color$green, size=14, alpha=0.8)+
+      scale_y_continuous(expand=expand_scale(0.2))+
+      theme_spotify()+
+      theme(plot.background=rect_black, panel.background=rect_black, axis.line=blank, axis.ticks=blank, axis.title=blank)
+    
+    girafe(ggobj=gg,
+           width_svg=input$window$width/input$window$dpi,
+           height_svg=0.4*input$window$height/input$window$dpi) %>%
+      girafe_options(opts_selection(css_selection, "single", selected=max(points$added_month)),
+                     opts_tooltip(css_tooltip),
+                     opts_hover(css_hover),
+                     opts_toolbar(saveaspng=F))
   })
   
   output$summary <- renderUI({
-    if (is.null(react$stat))
+    if (loading() || !input$feature %in% react$stat_all$feature)
       return()
     
-    react$stat %>%
-      select(feature, label) %>%
-      pivot_wider(names_from="feature", values_from="label") %>%
-      glue_data("Looks like your tracks are <span style=color:{color$green}>{valence}</span> relative to Spotify's full library.",
-                " They're also <span style=color:{color$green}>{energy}{danceability}</span>. Explore why below!") %>%
+    month_selected <- if (length(input$month_selected)) input$month_selected else max(react$stat_long$added_month)
+    
+    label <- list(spotify=glue("<span style='color:grey30'>Spotify's library</span>"),
+                  your=glue("<span style='color:{color$green}'>your library</span>"))
+    
+    react$stat_long %>%
+      filter(feature == input$feature & metric == "median" & added_month == month_selected) %>%
+      mutate(feature=as.character(feature)) %>%
+      inner_join(react$stat_all, "feature") %>%
+      mutate(text=paste0("As of ", format(added_month, "%B %Y"), ", tracks in ",
+                         ifelse(median > value, label$spotify, label$your),
+                         " were on average <strong>",
+                         percent(abs(median - value) / min(median, value), 2), " ", feature_labels[input$feature],
+                         "</strong> than those in ",
+                         ifelse(median > value, label$your, label$spotify),
+                         ifelse(dip > 0.05, ", but yours are have more than a single mode", "."))) %>%
+      pull(text) %>%
       HTML()
   })
   
-  observe({
-    if (!is.null(react$tracks_long) && !is.null(input$feature)) {
-      react$tracks_feature <- filter(react$tracks_long, feature == input$feature)
-    }
-  })
-  
-  output$points <- renderggiraph({
-    if (is.null(react$tracks_feature))
+  output$distribution <- renderggiraph({
+    if (loading())
       return()
     
-    tracks_feat_top <- react$tracks_feature %>%
-      filter(!!sym(input$term) > 0) %>%
-      arrange(desc(scaled))
-    
-    gg <- ggplot(tracks_feat_top, aes(0, scaled))+
-      geom_text_repel(aes(label=label), nudge_x=0.05, direction="y", hjust=0, size=5, segment.size=0.1, color="white", family=nova)+
-      geom_point_interactive(aes(tooltip=tooltip, data_id=id), size=7, alpha=0.5, color=color$green)+
-      xlim(0, 1)+
-      ylim(0, 1)+
-      labs(y=feature_labels[input$feature])+
-      theme_spotify(axis.line.x=blank, axis.title.x=blank)
-    
-    girafe(ggobj=gg, width_svg=10, height_svg=7) %>%
-      girafe_options(opts_selection(css_selection, "single"), opts_tooltip(css_tooltip), opts_hover(css_hover))
-  })
-  
-  observe({
-    if (is.null(react$tracks_feature))
-      return()
-    
-    if (length(input$points_selected)) {
-      feature_value <- react$tracks %>%
-        filter(id == input$points_selected) %>%
-        pull(input$feature)
-      
-      react$similar <- react$tracks_feature %>%
-        filter(id != input$points_selected) %>%
-        mutate(delta=abs(value - feature_value)) %>%
-        arrange(delta) %>%
-        slice(1:10)
-    } else {
-      react$similar <- NULL
-    }
-  })
-  
-  output$similar <- DT::renderDataTable({
-    if (!is.null(react$similar)) {
-      react$similar %>%
-        select(play, artist_names, album_name, name) %>%
-        datatable(colnames=c("", "Artists", "Album", "Track"), rownames=F, escape=F, selection="single",
-                  options=list(searching=F, paging=F, info=F, ordering=F), class="compact")
-    }
-  })
-  
-  output$player <- renderUI({
-    if (is.null(react$similar) || !length(input$similar_rows_selected))
-      return()
-    
-    url <- react$similar %>%
-      slice(input$similar_rows_selected) %>%
-      pull("preview_url")
-    
-    if (is.na(url))
-      return()
-    
-    HTML(paste0('<br><audio controls src="',url,'" type="audio/mpeg" autoplay></audio>'))
-  })
-  
-  output$bars <- renderggiraph({
-    if (is.null(react$tracks_feature))
-      return()
-    
-    added_before <- if (length(input$ribbons_selected)) input$ribbons_selected else max(react$tracks$added_date, na.rm=T)
-    bins <- feature_bins[[input$feature]]
-    unit <- switch(input$feature, loudness=" dB", tempo=" BPM", "")
-    
-    bars <- react$tracks_feature %>%
-      filter(added_date <= added_before) %>%
-      group_by(bin) %>%
-      tally() %>%
-      mutate(scaled=n / max(n),
-             tooltip=paste0(input$feature," = ", bins[bin], " - ", bins[bin] + diff(bins)[1], unit,"<br>",
-                            "track count = ", comma(n)))
-    
-    gg <- ggplot()+
-      geom_col(aes(bin, scaled, fill="Spotify library"), filter(react$bars_all, feature == input$feature), color="grey30", width=1)+
-      geom_col_interactive(aes(bin, scaled, fill="your tracks", tooltip=tooltip, data_id=bin), bars, alpha=0.4, width=0.85)+
-      scale_fill_manual(values=c("grey30", color$green))+
-      scale_color_manual(values=color$palette, guide=F)+
-      labs(x=feature_labels[input$feature], y="more tracks", fill="")+
-      coord_flip()+
-      theme_spotify()
-    
-    girafe(ggobj=gg, width_svg=10, height_svg=7) %>%
-      girafe_options(opts_selection(css_selection, "none"), opts_tooltip(css_tooltip), opts_hover(css_hover))
-  })
-  
-  output$ribbons <- renderggiraph({
-    if (is.null(react$tracks_before))
-      return()
-    
-    tracks_before <- react$tracks_before %>%
+    bars_all <- react$bars_all %>%
       filter(feature == input$feature)
     
-    points <- tracks_before %>%
-      group_by(added_year) %>%
-      arrange(desc(n)) %>%
-      slice(1:2) %>%
-      mutate(tooltip=paste0(added_date, " (", comma(n), " tracks added)<br>",
-                            "median ", feature, " = ", round(value_median, 2)))
+    tracks_filtered <- react$tracks_long %>%
+      filter(feature == input$feature) %>%
+      {if (length(input$month_selected)) filter(., added_month <= input$month_selected) else .}
     
-    gg <- ggplot(tracks_before)+
-      geom_ribbon(aes(added_date, ymin=value_lower, ymax=value_upper, fill="25th - 75th percentile"), alpha=0.2)+
-      geom_step(aes(added_date, value_mean, linetype="mean"), color=color$green)+
-      geom_step(aes(added_date, value_median, linetype="median"), size=1, color=color$green)+
-      geom_point_interactive(aes(added_date, value_median, tooltip=tooltip, data_id=added_date), points, size=6, alpha=0.5, color=color$green)+
-      scale_y_continuous(limits=range(feature_bins[input$feature]))+
-      scale_fill_manual("", values=color$green)+
-      scale_linetype_manual("", values=c(mean="dotted", median="solid"))+
-      labs(x="time", y=feature_labels[input$feature])+
-      theme_spotify(axis.title.x=blank, axis.text.x=element_text_nova())
+    bars <- tracks_filtered %>%
+      group_by(bin) %>%
+      tally() %>%
+      mutate(scaled=n / max(n))
     
-    girafe(ggobj=gg, width_svg=10, height_svg=7) %>%
-      girafe_options(opts_selection(css_selection, "single", selected=max(react$tracks$added_date, na.rm=T)),
+    points <- tracks_filtered %>%
+      mutate(top=top_short + top_medium + top_long > 0) %>%
+      inner_join(bars, "bin", suffix=c("", "_bars")) %>%
+      group_by(bin) %>%
+      sample_n(n()) %>%
+      arrange(desc(top), is.na(preview_url)) %>%
+      mutate(index=seq(n())) %>%
+      filter(index == 1 | index < 40 * scaled_bars) %>%
+      arrange(added_date) %>%
+      mutate(y_pos=seq(0.02, scaled_bars[1] - 0.02, length.out=n())) %>%
+      mutate(y_pos=ifelse(index %% 2 == 0, lag(y_pos), y_pos)) %>%
+      filter(!is.na(y_pos))
+    
+    your_tracks <- paste0("your tracks (", comma(sum(bars$n)), ")")
+    
+    gg <- ggplot()+
+      geom_col(aes(bin, scaled, fill="Spotify library"), bars_all, color="grey30", width=1)+
+      geom_col(aes(bin, scaled, fill=your_tracks), bars, alpha=0.4, width=0.85)+
+      geom_text(aes(bin, scaled, label=comma(n)), bars, size=6, family=nova, color=color$grey, vjust=-0.2)+
+      geom_jitter_interactive(aes(bin, y_pos, shape=top, tooltip=tooltip, data_id=id), points, size=7, alpha=0.2, color=color$green, fill=color$slate, width=0.2, height=0)+
+      scale_fill_manual(values=setNames(c("grey30", color$green), c("Spotify library", your_tracks)))+
+      scale_shape_manual(values=c("TRUE"=21, "FALSE"=19), guide=F)+
+      labs(x=feature_labels[input$feature], y="more tracks / time", fill="")+
+      theme_spotify()
+    
+    girafe(ggobj=gg,
+           width_svg=input$window$width/input$window$dpi,
+           height_svg=input$window$height/input$window$dpi) %>%
+      girafe_options(opts_selection(css_selection, "single"),
                      opts_tooltip(css_tooltip),
                      opts_hover(css_hover))
   })
   
-  output$insight <- renderUI({
-    if (!is.null(react$genres_before)) {
-      total_share <- react$genres_before %>%
-        filter(added_month %in% range(added_month)) %>%
-        group_by(added_month) %>%
-        summarize(sum(share)) %>%
-        pull(2)
-      
-      decreasing <- diff(total_share) < 0
-      green <- glue("color:{color$green}")
-      
-      paste0("Because the total share of your top genres has ",
-             span(style=green,
-                  ifelse(decreasing, "decreased", "increased")),
-             " your taste seems to be trending ",
-             span(style=green,
-                  ifelse(1-total_share[2]/total_share[1] < 0.2, "slightly ", ""),
-                  ifelse(decreasing, "more", "less"), " eclectic")) %>%
-        HTML()
+  output$player <- renderUI({
+    if (is.null(input$distribution_selected))
+      return(div(style="height:57px"))
+    
+    if (input$distribution_selected %in% react$edges_all$track_id)
+      updateSelectInput(session, "track", selected=input$distribution_selected)
+    
+    play <- react$tracks %>%
+      filter(id == input$distribution_selected)
+    
+    if (is.na(play$preview_url))
+      return()
+    
+    glue("<audio controls autoplay src='{play$preview_url}' type='audio/mpeg' style=height:50px></audio>",
+         "<div class='side'>{play$artist_names} - {play$name}</div>") %>%
+      HTML()
+  })
+  
+  output$artist <- renderggiraph({
+    if (loading())
+      return()
+    
+    gg <- react$collaborators %>%
+      group_by(id, name) %>%
+      tally() %>%
+      ungroup() %>%
+      arrange(desc(n)) %>%
+      slice(1:10) %>%
+      mutate(index=seq(n(), 1)) %>%
+      ggplot()+
+      geom_col_interactive(aes(index, n, tooltip=paste0(name, ": ", comma(n)), data_id=id), fill=color$green, alpha=0.6)+
+      coord_flip()+
+      theme_spotify()+
+      theme(plot.background=rect_black, panel.background=rect_black, axis.line=blank, axis.ticks=blank, axis.title=blank)
+    
+    girafe(ggobj=gg,
+           width_svg=input$window$width/input$window$dpi,
+           height_svg=0.4*input$window$height/input$window$dpi) %>%
+      girafe_options(opts_selection(css_selection, "single"),
+                     opts_tooltip(css_tooltip),
+                     opts_hover(css_hover),
+                     opts_toolbar(saveaspng=F))
+  })
+  
+  observe({
+    if (!loading() && length(input$artist_selected)) {
+      updateSelectInput(session, "artist_id", selected=input$artist_selected)
     }
   })
   
-  output$box <- renderggiraph({
-    if (is.null(react$genres_long) || is.null(input$feature))
+  output$network <- renderVisNetwork({
+    if (loading() || length(input$artist_id) == 0 || input$artist_id == "")
       return()
     
-    genre_feature <- react$genres_long %>%
+    collaborator_id <- react$collaborators %>%
+      filter(id == input$artist_id) %>%
+      pull(collaborator_id)
+    
+    edge_tracks <- react$track_artists %>%
+      filter(artist_id %in% c(input$artist_id, collaborator_id)) %>%
+      pull(track_id) %>%
+      unique()
+    
+    tracks_feature <- react$tracks_long %>%
       filter(feature == input$feature) %>%
-      group_by(genre) %>%
-      mutate(n=n(), value_median=median(value)) %>%
-      mutate(tooltip=paste0(genre, " (", comma(n), " tracks)<br> median ", input$feature, " = ", value_median))
+      transmute(track_id=id, value)
     
-    gg <- ggplot(genre_feature)+
-      geom_boxplot_interactive(aes(genre, value, fill=genre, tooltip=tooltip, data_id=genre), outlier.color=NA, alpha=0.8)+
-      scale_y_continuous(limits=range(feature_bins[input$feature]))+
-      scale_fill_manual(values=rep(color$palette, 2), guide=F)+
-      labs(y=feature_labels[input$feature])+
-      theme_spotify(axis.title.x=blank)
+    digits <- if (diff(range(feature_bins[input$feature])) == 1) 2 else 0
     
-    girafe(ggobj=gg, width_svg=10, height_svg=7) %>%
-      girafe_options(opts_selection("fill:transparent; stroke:white", "single"), opts_tooltip(css_tooltip), opts_hover(css_hover))
+    edges <- react$edges_all %>%
+      filter(track_id %in% edge_tracks) %>%
+      left_join(tracks_feature, "track_id") %>%
+      mutate(title=paste0(track_name, "<br>", input$feature, ": ", round(value, digits)))
+    
+    nodes <- react$artists %>%
+      filter(id %in% unique(c(edges$from, edges$to))) %>%
+      transmute(id,
+                label=name,
+                title=map_chr(genres, function(x) if (length(x)) glue_collapse(x, "<br>") else ""),
+                size=rescale(popularity, c(10, 30)))
+    
+    fire_edge <- "function(x) { Shiny.onInputChange('network_fired', x) ;}"
+    
+    visNetwork(nodes, edges, background=color$slate) %>%
+      visNodes(color=list(background="rgba(29, 185, 84, 0.8)", border="rgba(29, 185, 84, 0.8)", highlight=color$purple),
+               font=list(face=nova, color=color$grey)) %>%
+      visEdges(scaling=list(min=1, max=7),
+               color=list(color=color$grey, highlight="rgba(255, 255, 255, 0.5)", opacity=0.2)) %>%
+      visOptions(nodesIdSelection=list(enabled=T, selected=input$artist_id, style="width:0px; height:0px; border:none")) %>%
+      visEvents(selectEdge=fire_edge, deselectEdge=fire_edge) %>%
+      visInteraction(tooltipStyle=glue("position: fixed; visibility:hidden; {css_tooltip}"))
   })
   
-  output$lines <- renderggiraph({
-    if (is.null(react$genres_before))
+  output$player2 <- renderUI({
+    if (length(input$network_fired$edges) != 1 || length(input$network_fired$nodes) > 0)
+      return(div(style="height:57px"))
+    
+    track_id <- react$edges_all %>%
+      filter(id == input$network_fired$edges) %>%
+      pull(track_id)
+
+    play <- react$tracks %>%
+      filter(id == track_id)
+    
+    if (is.na(play$preview_url))
       return()
-    
-    genre_sel <- if (length(input$box_selected)) input$box_selected else unique(react$genres_before$genre)
-    
-    text <- react$genres_before %>%
-      filter(added_month == min(added_month))
-    
-    gg <- ggplot(react$genres_before)+
-      geom_line_interactive(aes(added_month, share, color=genre, alpha=genre %in% genre_sel, tooltip=genre), size=1.5)+
-      geom_text_repel(aes(added_month, share, label=genre), text, size=4, hjust=1, nudge_x=0.05, direction="y",
-                      segment.size=0.5, segment.alpha=0.5, color="white", family=nova)+
-      scale_x_date(expand=expand_scale(c(0.2, 0.05)))+
-      scale_y_continuous(labels=function(x) percent(x, 1))+
-      scale_color_manual(values=rep(color$palette, 2), guide=F)+
-      scale_alpha_manual(values=c("FALSE"=0.2, "TRUE"=0.8), guide=F)+
-      labs(y="share of your tracks")+
-      theme_spotify(axis.text.y=element_text_nova(), axis.title.x=blank, axis.text.x=element_text_nova())
-    
-    girafe(ggobj=gg, width_svg=10, height_svg=7) %>%
-      girafe_options(opts_selection(type="none"), opts_tooltip(css_tooltip), opts_hover(css_hover))
+
+    glue("<audio controls autoplay src='{play$preview_url}' type='audio/mpeg' style=height:50px></audio>",
+         "<div class='side'>{play$artist_names} - {play$name}</div>") %>%
+      HTML()
   })
+  
   
 })
