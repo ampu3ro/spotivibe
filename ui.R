@@ -2,11 +2,15 @@
 fluidPage(
   tags$head(includeCSS(theme)),
   fluidPage(
-    titlePanel("SpotiVibe"),
+    title="spotivibe",
+    img(src="spotivibe.png", height="64px", style="padding-top:24px"),
     tags$script("Shiny.addCustomMessageHandler('redirect', function(url) {location.replace(url)});"),
+    div(id="ppitest", style="width:1in;padding:0px;visible:hidden"),
+    tags$script(src="resize.js"),
     br(),
     div("Spotify analyzes every track in its library and summarizes each with",
-        tipify(span(style="text-decoration-line: underline; text-decoration-style: dotted;", "9 quantitative metrics"), feature_definitions),
+        uiOutput("metrics", inline=T),
+        tippy_this("metrics", feature_definitions, maxWidth="500px", theme="gray"),
         "that it makes available through its",
         a("web API", href="https://developer.spotify.com/documentation/web-api/reference/tracks/get-audio-features/", target="_blank"),".",
         "SpotiVibe lets you explore your library (up to 10k tracks), highlighting those most played and comparing the distribution of values",

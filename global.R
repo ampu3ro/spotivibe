@@ -1,13 +1,14 @@
 
 suppressPackageStartupMessages({
   library(shiny)
-  library(shinyBS)
+  library(tippy)
   library(curl)
   library(httr)
   library(httpuv)
   library(jsonlite)
   library(purrr)
   library(tidyr)
+  library(tibble)
   library(dplyr)
   library(glue)
   library(stringr)
@@ -19,6 +20,7 @@ suppressPackageStartupMessages({
   library(ggplot2)
   library(ggrepel)
   library(ggiraph)
+  library(visNetwork)
   library(showtext)
 })
 
@@ -77,24 +79,40 @@ feature_labels <- c(
   tempo="faster / higher BPM"
 )
 
-feature_definitions <- paste0("valence (0-1): mood, from sad/angry to happy/cheerful<br>",
-                              "energy (0-1): perceptual intensity and activity<br>",
-                              "danceability (0-1): suitability for dancing<br>",
-                              "instrumentalness (0-1): lack of vocals<br>",
-                              "acousticness (0-1): confidence that the track is acoustic<br>",
-                              "speechiness (0-1): presence of spoken word<br>",
-                              "liveness (0-1): likelihood of the presence of an audience<br>",
-                              "loudness (-60-0 dB): psychological amplitude/strength<br>",
-                              "tempo (0-220 BPM): speed, average beats per minute")
+color <- list(black="#040404",
+              slate="#282828",
+              grey="#909090",
+              valence="#16e68b",
+              energy="#ccf462",
+              danceability="#b02a97",
+              instrumentalness="#9cf0e1",
+              acousticness="#ff4633",
+              speechiness="#ffcfd6",
+              liveness="#ef1e31",
+              loudness="#4102f7",
+              tempo="#c97d55")
+
+bull <- map2(color, names(color), function(x, y) {
+  glue("<span style=color:{x};font-size:20pt;font-size:3em;line-height:22px;vertical-align:-8px>&bull;</span> <strong>{y}</strong>")
+})
+
+feature_definitions <- glue("{bull$valence} (0-1): mood, from sad/angry to happy/cheerful<br>",
+                            "{bull$energy} (0-1): perceptual intensity and activity<br>",
+                            "{bull$danceability} (0-1): suitability for dancing<br>",
+                            "{bull$instrumentalness} (0-1): lack of vocals<br>",
+                            "{bull$acousticness} (0-1): confidence that the track is acoustic<br>",
+                            "{bull$speechiness} (0-1): presence of spoken word<br>",
+                            "{bull$liveness} (0-1): likelihood of the presence of an audience<br>",
+                            "{bull$loudness} (-60-0 dB): psychological amplitude/strength<br>",
+                            "{bull$tempo} (0-220 BPM): speed, average beats per minute")
 
 theme <- "www/spotify.css"
-
-color <- list(green="#1db954", slate="#282828", purple="#ac68a0",
-              palette=c("#16e68b", "#ccf462", "#b02a97", "#9cf0e1", "#ff4633", "#ffcfd6", "#ef1e31", "#4102f7", "#c97d55"))
-
 css_tooltip <- "background-color:gray; color:white; opacity:90%"
-css_selection <- glue("fill:{color$purple}")
-css_hover <- "fill:white; color:white"
+css_selection <- css_hover <- "fill:white; color:white"
+
+rgba_string <- function(hex, alpha=0.8) {
+  paste0("rgba(", glue_collapse(c(grDevices::col2rgb(hex)[,1], alpha), ", "), ")")
+}
 
 nova <- "ProximaNova-Medium"
 font_add(family=nova, regular=glue("www/fonts/{nova}.ttf"))
@@ -103,8 +121,9 @@ showtext_auto()
 if (.Platform$OS.type == "windows")
   grDevices::windowsFonts("ProximaNova-Medium"=grDevices::windowsFont(nova))
 
-element_text_nova <- function(size=12, ...) element_text(family=nova, color="white", size=size, ...)
+element_text_nova <- function(size=16, ...) element_text(family=nova, color="white", size=size, ...)
 rect <- element_rect(fill=color$slate, color=NA)
+rect_black <- element_rect(fill=color$black)
 blank <- element_blank()
 arrow <- grid::arrow(length=grid::unit(0.1, "inches"))
 
@@ -114,13 +133,13 @@ theme_spotify <- function(...) {
         plot.background=rect,
         panel.background=rect,
         panel.grid=blank,
-        title=element_text_nova(size=14),
+        title=element_text_nova(),
         strip.text=element_text_nova(),
         strip.background=rect,
         legend.position="top",
         legend.direction="horizontal",
         legend.key=blank,
-        legend.text=element_text_nova(size=10),
+        legend.text=element_text_nova(),
         axis.line=element_line(color="white", arrow=arrow),
         axis.title=element_text_nova(hjust=1, vjust=1),
         axis.text=blank,

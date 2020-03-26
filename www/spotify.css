@@ -16,6 +16,7 @@ html {
 
 body {
   font-family: "ProximaNova-Medium", "Arial", sans-serif;
+  font-size: 14pt;
   background-color: #040404;
   color: #909090;
   margin: 0;
@@ -57,18 +58,31 @@ th {
 div .inline {
   float: left;
   margin-right: 5px;
-  height: 20px;
+  height: 26px;
+  width: auto;
+}
+
+div .side {
+  display:inline-block;
+  vertical-align:20px;
+  padding-left:15px;
+  color: white;
+  font-size:12pt;
 }
 
 audio {
   background-color: #040404;
 }
 
-.tooltip-inner {
-  background-color:gray;
+.tippy-tooltip {
   color:white;
   text-align: left;
-  max-width: 100%;
+  font-size: 12pt;
+  border-radius: 0px;
+}
+
+.tippy-tooltip.gray-theme .tippy-backdrop {
+  background-color: gray;
 }
 
 .selectize-input {
@@ -76,10 +90,10 @@ audio {
   border: none !important;
   box-shadow: none !important;
   color: white;
-  font-size: 12px;
-  padding: 2px 5px;
+  font-size: 12pt;
+  padding: 4px 10px;
   min-height: 0px;
-  height: 22px;
+  height: 26px;
 }
 
 .selectize-input div.item + input {
@@ -93,6 +107,7 @@ audio {
 
 .selectize-dropdown-content {
   max-height: 400px;
+  font-size: 10pt;
 }
 
 .selectize-dropdown-content .active {
@@ -107,8 +122,8 @@ audio {
   color: white;
   display: block;
   position: absolute;
-  top: 5px;
-  right: 20px;
+  top: 8px;
+  right: 26px;
 }
 
 .selectize-control.single .selectize-input.dropdown-active:after {
@@ -119,5 +134,5 @@ audio {
   display: block;
   position: absolute;
   top: 10px;
-  right: 20px;
+  right: 26px;
 }
