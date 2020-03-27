@@ -425,8 +425,6 @@ shinyServer(function(input, output, session) {
       labs(x=feature_labels[input$feature], y="more tracks / time", fill="")+
       theme_spotify()
     
-    print(input$window$dpi)
-    
     girafe(ggobj=gg,
            width_svg=units_right / 12 * window_width,
            height_svg=530 / input$window$dpi) %>% # not sure why it doesn't convert to 500px
