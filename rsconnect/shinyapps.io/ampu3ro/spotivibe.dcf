@@ -5,8 +5,8 @@ account: ampu3ro
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 1914427
-bundleId: 2861674
+bundleId: 2929690
 url: https://ampu3ro.shinyapps.io/spotivibe/
-when: 1583680505.48093
+when: 1585262311.77232
 asMultiple: FALSE
 asStatic: FALSE

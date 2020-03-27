@@ -121,7 +121,7 @@ showtext_auto()
 if (.Platform$OS.type == "windows")
   grDevices::windowsFonts("ProximaNova-Medium"=grDevices::windowsFont(nova))
 
-element_text_nova <- function(size=16, ...) element_text(family=nova, color="white", size=size, ...)
+element_text_nova <- function(size=12, ...) element_text(family=nova, color="white", size=size, ...)
 rect <- element_rect(fill=color$slate, color=NA)
 rect_black <- element_rect(fill=color$black)
 blank <- element_blank()
@@ -145,3 +145,6 @@ theme_spotify <- function(...) {
         axis.text=blank,
         ...)
 }
+
+units_left <- 4
+units_right <- 12 - units_left

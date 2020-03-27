@@ -2,9 +2,9 @@
 // https://stackoverflow.com/questions/5489946/how-to-wait-for-the-end-of-resize-event-and-only-then-perform-an-action
 
 $(document).on("shiny:connected", function(e) {
-	var w = window.innerWidth
-	var h = window.innerHeight
-	var d =  document.getElementById("ppitest").offsetWidth;
+	var w = window.innerWidth;
+	var h = window.innerHeight;
+	var d = document.getElementById("ppitest").offsetWidth;
 	Shiny.onInputChange("window", {width: w, height: h, dpi: d});
 });
 
@@ -17,8 +17,8 @@ function resizeend() {
         setTimeout(resizeend, delta);
     } else {
         timeout = false;
-        var w = $(this).width()
-        var h = $(this).height()
+        var w = $(this).width();
+        var h = $(this).height();
         var d =  document.getElementById("ppitest").offsetWidth;
         Shiny.onInputChange("window", {width: w, height: h, dpi: d});
     }               

@@ -20,9 +20,9 @@ shinyServer(function(input, output, session) {
     } else if (!is.null(react$tracks)) {
       fluidPage(tags$head(includeCSS(theme)),
                 hr(),
-                br(),
                 fluidRow(
-                  column(4,
+                  column(units_left,
+                         br(),
                          div(class="inline",
                              "Start by selecting a single feature like"),
                          div(class="inline",
@@ -36,7 +36,7 @@ shinyServer(function(input, output, session) {
                          div("to find a month with a jump. Click on a point below to reflect your library at that time."),
                          div(style="clear:both"),
                          br(),
-                         ggiraphOutput("month"),
+                         ggiraphOutput("month", height="auto"),
                          br(),
                          span("Bars show track counts for ranges of"),
                          textOutput("feature_text", inline=T),
@@ -45,14 +45,15 @@ shinyServer(function(input, output, session) {
                          div(style="height:1em"),
                          uiOutput("summary")
                   ),
-                  column(8,
-                         ggiraphOutput("distribution"),
+                  column(units_right,
+                         br(),
+                         ggiraphOutput("distribution", height="auto"),
                          div(style="height:0.5em"),
                          htmlOutput("player"))
                 ),
                 hr(),
                 fluidRow(
-                  column(4,
+                  column(units_left,
                          br(),
                          div("Another interesting aspect to explore is the network of collaborations between artists in your library."),
                          br(),
@@ -62,7 +63,7 @@ shinyServer(function(input, output, session) {
                              selectInput("artist_id", NULL, NULL, width="150px")),
                          div("or find one with a higher number of direct collaborations by selecting a bar below."),
                          div(style="clear:both"),
-                         ggiraphOutput("artist"),
+                         ggiraphOutput("artist", height="auto"),
                          span("Nodes (bubbles representing artists) are sized relative to artist popularity and edges",
                               "(lines representing tracks) relative to track"),
                          textOutput("feature_text2", inline=T),
@@ -70,7 +71,8 @@ shinyServer(function(input, output, session) {
                          div("Hover over the nodes to show artist genres and over the edges to show track names.",
                              "Click on an edge to play a sample of that track if available. Scroll to zoom in/out and drag nodes",
                              "around to reposition the network.")),
-                  column(8,
+                  column(units_right,
+                         br(),
                          visNetworkOutput("network", height="500px"),
                          div(style="height:2em"),
                          htmlOutput("player2"))
@@ -341,19 +343,19 @@ shinyServer(function(input, output, session) {
       unique()
     
     gg <- ggplot()+
-      geom_step(aes(added_month, value), line, color=color[[input$feature]], size=1.5, alpha=0.8)+
-      geom_point_interactive(aes(added_month, value, tooltip=tooltip, data_id=added_month), points, color=color[[input$feature]], size=14, alpha=0.8)+
+      geom_step(aes(added_month, value), line, color=color[[input$feature]], alpha=0.8)+
+      geom_point_interactive(aes(added_month, value, tooltip=tooltip, data_id=added_month), points, color=color[[input$feature]], size=5, alpha=0.8)+
       scale_y_continuous(expand=expand_scale(0.2))+
       theme_spotify()+
       theme(plot.background=rect_black, panel.background=rect_black, axis.line=blank, axis.ticks=blank, axis.title=blank)
     
     girafe(ggobj=gg,
-           width_svg=input$window$width/input$window$dpi,
-           height_svg=0.4*input$window$height/input$window$dpi) %>%
+           height=150 / input$window$dpi) %>%
       girafe_options(opts_selection(css_selection, "single", selected=max(points$added_month)),
                      opts_tooltip(css_tooltip),
                      opts_hover(css_hover),
-                     opts_toolbar(saveaspng=F))
+                     opts_toolbar(saveaspng=F),
+                     opts_sizing(rescale=F))
   })
   
   output$summary <- renderUI({
@@ -396,6 +398,8 @@ shinyServer(function(input, output, session) {
       tally() %>%
       mutate(scaled=n / max(n))
     
+    window_width <- input$window$width / input$window$dpi
+    
     points <- tracks_filtered %>%
       mutate(top=top_short + top_medium + top_long > 0) %>%
       inner_join(bars, "bin", suffix=c("", "_bars")) %>%
@@ -403,7 +407,7 @@ shinyServer(function(input, output, session) {
       sample_n(n()) %>%
       arrange(desc(top), is.na(preview_url)) %>%
       mutate(index=seq(n())) %>%
-      filter(index == 1 | index < 40 * scaled_bars) %>%
+      filter(index == 1 | index < 40 / 15 * window_width * scaled_bars) %>%
       arrange(added_date) %>%
       mutate(y_pos=seq(0.02, scaled_bars[1] - 0.02, length.out=n())) %>%
       mutate(y_pos=ifelse(index %% 2 == 0, lag(y_pos), y_pos)) %>%
@@ -414,19 +418,22 @@ shinyServer(function(input, output, session) {
     gg <- ggplot()+
       geom_col(aes(bin, scaled, fill="Spotify library"), bars_all, color="grey30", width=1)+
       geom_col(aes(bin, scaled, fill=your_tracks), bars, alpha=0.5, width=0.85)+
-      geom_text(aes(bin, scaled, label=comma(n)), bars, size=6, family=nova, color=color$grey, vjust=-0.2)+
-      geom_jitter_interactive(aes(bin, y_pos, shape=top, tooltip=tooltip, data_id=id), points, size=7, alpha=0.3, color=color[[input$feature]], fill=color$slate, width=0.2, height=0)+
+      geom_text(aes(bin, scaled, label=comma(n)), bars, size=3, family=nova, color=color$grey, vjust=-0.2)+
+      geom_jitter_interactive(aes(bin, y_pos, shape=top, tooltip=tooltip, data_id=id), points, size=5, alpha=0.3, color=color[[input$feature]], fill=color$slate, width=0.2, height=0)+
       scale_fill_manual(values=setNames(c("grey30", color[[input$feature]]), c("Spotify library", your_tracks)))+
       scale_shape_manual(values=c("TRUE"=21, "FALSE"=19), guide=F)+
       labs(x=feature_labels[input$feature], y="more tracks / time", fill="")+
       theme_spotify()
     
+    print(input$window$dpi)
+    
     girafe(ggobj=gg,
-           width_svg=input$window$width/input$window$dpi,
-           height_svg=input$window$height/input$window$dpi) %>%
+           width_svg=units_right / 12 * window_width,
+           height_svg=530 / input$window$dpi) %>% # not sure why it doesn't convert to 500px
       girafe_options(opts_selection(css_selection, "single"),
                      opts_tooltip(css_tooltip),
-                     opts_hover(css_hover))
+                     opts_hover(css_hover),
+                     opts_sizing(rescale=F))
   })
   
   output$player <- renderUI({
@@ -465,12 +472,12 @@ shinyServer(function(input, output, session) {
       theme(plot.background=rect_black, panel.background=rect_black, axis.line=blank, axis.ticks=blank, axis.title=blank)
     
     girafe(ggobj=gg,
-           width_svg=input$window$width/input$window$dpi,
-           height_svg=0.4*input$window$height/input$window$dpi) %>%
+           height_svg=150 / input$window$dpi) %>%
       girafe_options(opts_selection(css_selection, "single"),
                      opts_tooltip(css_tooltip),
                      opts_hover(css_hover),
-                     opts_toolbar(saveaspng=F))
+                     opts_toolbar(saveaspng=F),
+                     opts_sizing(rescale=F))
   })
   
   observe({

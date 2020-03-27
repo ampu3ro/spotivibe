@@ -41,3 +41,5 @@ vignettes/*.pdf
 scratch.R
 
 data_temp.rds
+
+rsconnect/shinyapps.io/ampu3ro/spotivibe.dcf
