@@ -17,7 +17,7 @@ fluidPage(
         "for each feature against the general population. This lets you see, for example, how happy/sad your music is and",
         "how that mood changes over time."),
     br(),
-    radioButtons("dataset", NULL, c("use data from your Spotify library*"="yours", "use example data from my library"="mine"), "mine", inline=T),
+    radioButtons("dataset", NULL, c("use data from your Spotify library*"="yours", "use example data from my library"="mine"), inline=T),
     helpText(style="font-size:8pt",
              "*uses", a("oauth2.0", href="https://oauth.net/2/"), "to authenticate and only stores data in memory while the app is running"),
   ),
